@@ -3,6 +3,7 @@ import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getFunctions, Functions } from 'firebase/functions';
+import { getAnalytics, Analytics, isSupported, logEvent as firebaseLogEvent } from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -29,4 +30,32 @@ const db: Firestore = getFirestore(app);
 const storage: FirebaseStorage = getStorage(app);
 const functions: Functions = getFunctions(app, 'us-central1');
 
-export { app, auth, db, storage, functions };
+// Analytics - only initialize on client side
+let analytics: Analytics | null = null;
+
+// Initialize analytics (call this from a client component)
+export async function initializeAnalytics(): Promise<Analytics | null> {
+  if (typeof window === 'undefined') return null;
+
+  if (analytics) return analytics;
+
+  const supported = await isSupported();
+  if (supported) {
+    analytics = getAnalytics(app);
+  }
+  return analytics;
+}
+
+// Helper function to log events safely
+export function logEvent(eventName: string, eventParams?: Record<string, unknown>) {
+  if (analytics) {
+    firebaseLogEvent(analytics, eventName, eventParams);
+  }
+}
+
+// Get analytics instance (may be null if not initialized)
+export function getAnalyticsInstance(): Analytics | null {
+  return analytics;
+}
+
+export { app, auth, db, storage, functions, analytics };

@@ -10,11 +10,10 @@ import {
   limit,
   getDocs,
   Unsubscribe,
-  increment,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '@/lib/firebase/config';
-import { User, VideoJob, Notification, GenerationLimits } from '@/types';
+import { User, VideoJob, Notification } from '@/types';
 
 interface UserState {
   // State
@@ -22,7 +21,6 @@ interface UserState {
   notifications: Notification[];
   unreadCount: number;
   videoJobs: VideoJob[];
-  generationLimits: GenerationLimits | null;
 
   // Subscriptions
   unsubscribeCredits: Unsubscribe | null;
@@ -45,10 +43,6 @@ interface UserState {
   // Notification actions
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: (userId: string) => Promise<void>;
-
-  // Generation limits
-  checkGenerationLimit: (userId: string) => Promise<boolean>;
-  incrementGenerationCount: (userId: string) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -56,7 +50,6 @@ export const useUserStore = create<UserState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
   videoJobs: [],
-  generationLimits: null,
 
   unsubscribeCredits: null,
   unsubscribeNotifications: null,
@@ -227,46 +220,6 @@ export const useUserStore = create<UserState>((set, get) => ({
     } catch (error) {
       console.error('Error marking all notifications read:', error);
       throw error;
-    }
-  },
-
-  checkGenerationLimit: async (userId: string) => {
-    try {
-      const limitsDoc = await getDocs(
-        query(collection(db, 'generationLimits'), where('userId', '==', userId))
-      );
-
-      if (limitsDoc.empty) {
-        // No limits document exists, user can generate
-        return true;
-      }
-
-      const limits = limitsDoc.docs[0].data() as GenerationLimits;
-      const today = new Date().toDateString();
-      const lastReset = limits.lastResetDate.toDate().toDateString();
-
-      // If it's a new day, reset the count
-      if (today !== lastReset) {
-        return true;
-      }
-
-      // Check if user has reached daily limit (3 for free users)
-      // This should also check subscription status
-      return limits.dailyCount < 3;
-    } catch (error) {
-      console.error('Error checking generation limit:', error);
-      return false;
-    }
-  },
-
-  incrementGenerationCount: async (userId: string) => {
-    try {
-      const limitsRef = doc(db, 'generationLimits', userId);
-      await updateDoc(limitsRef, {
-        dailyCount: increment(1),
-      });
-    } catch (error) {
-      console.error('Error incrementing generation count:', error);
     }
   },
 }));

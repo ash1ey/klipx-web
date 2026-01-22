@@ -263,14 +263,6 @@ export interface SubscriptionTier {
   bestValue?: boolean;
 }
 
-// Generation Limits (for abuse prevention)
-export interface GenerationLimits {
-  userId: string;
-  dailyCount: number;
-  lastResetDate: Timestamp;
-  concurrentJobs: number;
-}
-
 // Enums and Types
 export type VideoJobType =
   | 'text-to-video'
@@ -325,13 +317,13 @@ export interface StoryboardScene {
   duration: number;
 }
 
-// Credit costs by model
+// Credit costs by model (must match Firebase Functions - functions/src/index.ts lines 248-350)
 export const CREDIT_COSTS = {
   'sora2': { '10s': 30, '15s': 45 },
   'veo3': 60,
   'grok': 20,
   'wan26': { '5s': 70, '10s': 140, '15s': 210 },
-  'seedance': { '480p': { '5s': 10, '10s': 20 }, '720p': { '5s': 30, '10s': 60 }, '1080p': { '5s': 50, '10s': 100 } },
+  'seedance': { '480p': { '5s': 10, '10s': 20 }, '720p': { '5s': 23, '10s': 45 }, '1080p': { '5s': 50, '10s': 100 } },
   'kling26': 6, // per second
   'remix': 60,
   'veo-extend': 60,
@@ -345,19 +337,17 @@ export const CREDIT_COSTS = {
   'lyric-generator': 2,
 } as const;
 
-// Free tier limits
+// Free tier limits (no daily generation limit - only credits-based)
 export const FREE_TIER_LIMITS = {
-  dailyGenerations: 3,
   maxVideoDuration: 5, // seconds
   concurrentJobs: 1,
   watermark: true,
   queuePriority: 'low',
 } as const;
 
-// Subscription tier limits
+// Subscription tier limits (no daily generation limit - only credits-based)
 export const SUBSCRIPTION_LIMITS = {
   lite: {
-    dailyGenerations: 10,
     maxVideoDuration: 10,
     concurrentJobs: 2,
     watermark: false,
@@ -366,7 +356,6 @@ export const SUBSCRIPTION_LIMITS = {
     bonusPercentage: 10,
   },
   pro: {
-    dailyGenerations: 25,
     maxVideoDuration: 15,
     concurrentJobs: 3,
     watermark: false,
@@ -375,7 +364,6 @@ export const SUBSCRIPTION_LIMITS = {
     bonusPercentage: 20,
   },
   elite: {
-    dailyGenerations: Infinity,
     maxVideoDuration: 15,
     concurrentJobs: 5,
     watermark: false,

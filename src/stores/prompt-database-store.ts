@@ -39,7 +39,7 @@ interface PromptDatabaseState {
   setContentType: (type: ContentType) => void;
   setCategory: (category: Category) => void;
   setSearchQuery: (query: string) => void;
-  fetchPrompts: (userId?: string) => Promise<void>;
+  fetchPrompts: (userId?: string, searchOverride?: string) => Promise<void>;
   fetchSavedPrompts: (userId: string) => Promise<void>;
   loadMore: () => Promise<void>;
   purchasePrompt: (params: PurchasePromptParams) => Promise<void>;
@@ -81,8 +81,12 @@ export const usePromptDatabaseStore = create<PromptDatabaseState>((set, get) => 
     set({ searchQuery: query });
   },
 
-  fetchPrompts: async (userId?: string) => {
+  fetchPrompts: async (userId?: string, searchOverride?: string) => {
     const { contentType, category, searchQuery } = get();
+    // Use searchOverride if provided, otherwise use store state
+    const effectiveSearch = searchOverride !== undefined ? searchOverride : searchQuery;
+
+    console.log('[fetchPrompts] Called with:', { userId, searchOverride, effectiveSearch, contentType, category });
 
     set({ isLoading: true });
 
@@ -99,13 +103,17 @@ export const usePromptDatabaseStore = create<PromptDatabaseState>((set, get) => 
           videos = await getRemixableVideos({ filter: 'all', limit: ITEMS_PER_PAGE }) as unknown as Video[];
         }
 
+        console.log('[fetchPrompts] Videos fetched:', videos.length, 'First video:', videos[0]);
+
         // Apply search filter if query exists
-        if (searchQuery.trim()) {
-          const lowerQuery = searchQuery.toLowerCase();
+        if (effectiveSearch.trim()) {
+          const lowerQuery = effectiveSearch.toLowerCase();
+          const beforeCount = videos.length;
           videos = videos.filter((v) =>
             v.description?.toLowerCase().includes(lowerQuery) ||
             v.username?.toLowerCase().includes(lowerQuery)
           );
+          console.log('[fetchPrompts] Search filter applied:', { query: lowerQuery, before: beforeCount, after: videos.length });
         }
 
         set({ videos, hasMore: videos.length >= ITEMS_PER_PAGE });
@@ -121,12 +129,16 @@ export const usePromptDatabaseStore = create<PromptDatabaseState>((set, get) => 
           images = await getRemixableImages({ filter: 'all', limit: ITEMS_PER_PAGE }) as unknown as ImageJob[];
         }
 
+        console.log('[fetchPrompts] Images fetched:', images.length, 'First image:', images[0]);
+
         // Apply search filter if query exists
-        if (searchQuery.trim()) {
-          const lowerQuery = searchQuery.toLowerCase();
+        if (effectiveSearch.trim()) {
+          const lowerQuery = effectiveSearch.toLowerCase();
+          const beforeCount = images.length;
           images = images.filter((img) =>
             img.prompt?.toLowerCase().includes(lowerQuery)
           );
+          console.log('[fetchPrompts] Search filter applied:', { query: lowerQuery, before: beforeCount, after: images.length });
         }
 
         set({ images, hasMore: images.length >= ITEMS_PER_PAGE });

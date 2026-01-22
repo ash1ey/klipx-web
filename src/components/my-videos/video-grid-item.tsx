@@ -19,22 +19,11 @@ export function VideoGridItem({ item, type, onClick }: VideoGridItemProps) {
   const job = item as VideoJob;
 
   // Get thumbnail URL and convert to proper Firebase Storage format
-  const rawThumbnailUrl = isProcessing
-    ? job.thumbnailUrl
-    : video.thumbnailUrl;
+  const rawThumbnailUrl = isProcessing ? job.thumbnailUrl : video.thumbnailUrl;
   const thumbnailUrl = convertToFirebaseStorageUrl(rawThumbnailUrl);
 
   // Get status for processing items
   const status = isProcessing ? job.status : 'complete';
-  const progress = isProcessing ? job.progress || 0 : 100;
-
-  // Calculate display progress based on status
-  const getDisplayProgress = () => {
-    if (status === 'pending') return 10;
-    if (status === 'post-processing') return 90;
-    if (status === 'processing') return Math.max(20, Math.min(85, progress));
-    return progress;
-  };
 
   return (
     <button
@@ -43,11 +32,7 @@ export function VideoGridItem({ item, type, onClick }: VideoGridItemProps) {
     >
       {/* Thumbnail or placeholder */}
       {thumbnailUrl ? (
-        <img
-          src={thumbnailUrl}
-          alt=""
-          className="w-full h-full object-cover"
-        />
+        <img src={thumbnailUrl} alt="" className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20" />
       )}
@@ -55,20 +40,14 @@ export function VideoGridItem({ item, type, onClick }: VideoGridItemProps) {
       {/* Processing overlay */}
       {isProcessing && status !== 'complete' && status !== 'failed' && (
         <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
-          {/* Animated spinner */}
-          <div className="relative w-16 h-16">
+          {/* Animated spinner (no percentage) */}
+          <div className="relative w-12 h-12">
             {/* Outer rotating ring */}
             <div className="absolute inset-0 rounded-full border-2 border-primary/30" />
             <div
               className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin"
               style={{ animationDuration: '1.5s' }}
             />
-            {/* Inner content */}
-            <div className="absolute inset-2 rounded-full bg-black/50 flex items-center justify-center">
-              <span className="text-white text-sm font-medium">
-                {getDisplayProgress()}%
-              </span>
-            </div>
           </div>
           {/* Status text */}
           <span className="text-white/80 text-xs mt-2 capitalize">

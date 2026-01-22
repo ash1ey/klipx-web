@@ -237,40 +237,40 @@ export function VideoDetailModal({
             </SheetHeader>
 
             {/* Video Player */}
-            <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
-              <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
+            <div className="flex-1 bg-black relative overflow-hidden" style={{ minHeight: 0 }}>
+              <div className="absolute inset-0 flex items-center justify-center">
                 <video
                   ref={videoRef}
                   src={videoUrl || undefined}
                   poster={thumbnailUrl || undefined}
-                  className="w-full h-full object-contain"
+                  className="max-w-full max-h-full object-contain"
                   playsInline
                   loop
                   onClick={togglePlay}
                 />
+              </div>
 
-                {/* Play/Pause overlay */}
+              {/* Play/Pause overlay */}
+              {!isPlaying && (
                 <div
                   className="absolute inset-0 flex items-center justify-center cursor-pointer"
                   onClick={togglePlay}
                 >
-                  {!isPlaying && (
-                    <div className="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center">
-                      <Play className="w-8 h-8 text-white ml-1" />
-                    </div>
-                  )}
+                  <div className="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center">
+                    <Play className="w-8 h-8 text-white ml-1" />
+                  </div>
                 </div>
+              )}
 
-                {/* Progress bar */}
+              {/* Progress bar */}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 cursor-pointer"
+                onClick={handleSeek}
+              >
                 <div
-                  className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 cursor-pointer"
-                  onClick={handleSeek}
-                >
-                  <div
-                    className="h-full bg-primary"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
+                  className="h-full bg-primary"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
 

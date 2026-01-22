@@ -1,7 +1,7 @@
 'use client';
 
 import { VideoJob } from '@/types';
-import { X, Loader2, Clock, AlertCircle, Sparkles } from 'lucide-react';
+import { Clock, AlertCircle, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -18,13 +18,6 @@ interface ProcessingModalProps {
 
 export function ProcessingModal({ job, isOpen, onClose }: ProcessingModalProps) {
   if (!job) return null;
-
-  const getDisplayProgress = () => {
-    if (job.status === 'pending') return 10;
-    if (job.status === 'post-processing') return 90;
-    if (job.status === 'processing') return Math.max(20, Math.min(85, job.progress || 0));
-    return job.progress || 0;
-  };
 
   const getStatusBadge = () => {
     switch (job.status) {
@@ -83,36 +76,21 @@ export function ProcessingModal({ job, isOpen, onClose }: ProcessingModalProps) 
         </DialogHeader>
 
         <div className="flex flex-col items-center py-6">
-          {/* Large animated progress circle */}
+          {/* Large animated spinner (no percentage) */}
           {job.status !== 'failed' && job.status !== 'complete' && (
-            <div className="relative w-32 h-32 mb-6">
+            <div className="relative w-24 h-24 mb-6">
               {/* Background circle */}
               <div className="absolute inset-0 rounded-full border-4 border-muted" />
 
-              {/* Progress ring */}
-              <svg className="absolute inset-0 w-full h-full -rotate-90">
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="60"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  className="text-primary"
-                  strokeDasharray={`${getDisplayProgress() * 3.77} 377`}
-                  strokeLinecap="round"
-                />
-              </svg>
-
               {/* Rotating ring animation */}
               <div
-                className="absolute inset-2 rounded-full border-2 border-transparent border-t-primary/50 animate-spin"
-                style={{ animationDuration: '2s' }}
+                className="absolute inset-0 rounded-full border-4 border-transparent border-t-primary animate-spin"
+                style={{ animationDuration: '1.5s' }}
               />
 
-              {/* Center content */}
-              <div className="absolute inset-4 rounded-full bg-card flex flex-col items-center justify-center">
-                <span className="text-3xl font-bold">{getDisplayProgress()}%</span>
+              {/* Center icon */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Sparkles className="w-8 h-8 text-primary" />
               </div>
             </div>
           )}

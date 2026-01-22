@@ -251,15 +251,15 @@ export function PromptPreviewModal({
             </SheetHeader>
 
             {/* Media Preview */}
-            <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
-              <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
+            <div className="flex-1 bg-black flex items-center justify-center overflow-hidden min-h-0">
+              <div className="relative h-full w-full flex items-center justify-center">
                 {isVideo ? (
                   <>
                     <video
                       ref={videoRef}
                       src={mediaUrl || undefined}
                       poster={thumbnailUrl || undefined}
-                      className="w-full h-full object-contain"
+                      className="max-w-full max-h-full object-contain"
                       playsInline
                       loop
                       onClick={togglePlay}
@@ -279,7 +279,7 @@ export function PromptPreviewModal({
                   <img
                     src={mediaUrl || thumbnailUrl || undefined}
                     alt="Prompt preview"
-                    className="w-full h-full object-contain"
+                    className="max-w-full max-h-full object-contain"
                   />
                 )}
               </div>

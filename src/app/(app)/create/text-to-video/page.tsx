@@ -1,71 +1,114 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, Info, Clock, Zap } from 'lucide-react';
+import { Loader2, Sparkles, Info, Clock, Zap, Layers } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useUserStore } from '@/stores/user-store';
 import { useAuthStore } from '@/stores/auth-store';
+import {
+  generateVideo,
+  VIDEO_MODELS,
+  MULTISHOT_CONFIG,
+  ModelConfig,
+  getDefaultDuration,
+  getDefaultAspectRatio,
+  getDefaultResolution,
+  getDefaultMode,
+} from '@/lib/services/video-generation-service';
+import { AIModel } from '@/types';
 
 const textToVideoSchema = z.object({
-  prompt: z.string().min(10, 'Prompt must be at least 10 characters').max(500, 'Prompt must be less than 500 characters'),
-  negativePrompt: z.string().max(200, 'Negative prompt must be less than 200 characters').optional(),
-  model: z.string(),
-  aspectRatio: z.string(),
-  duration: z.number().min(3).max(15),
+  prompt: z
+    .string()
+    .min(10, 'Prompt must be at least 10 characters')
+    .max(8000, 'Prompt must be less than 8000 characters'),
 });
 
 type TextToVideoFormData = z.infer<typeof textToVideoSchema>;
 
-const models = [
-  { id: 'sora-2', name: 'Sora 2', description: 'OpenAI\'s latest video model', credits: 30, badge: 'Popular' },
-  { id: 'veo-3', name: 'Veo 3', description: 'Google\'s advanced video generation', credits: 35, badge: 'New' },
-  { id: 'grok', name: 'Grok', description: 'xAI\'s video model', credits: 25 },
-  { id: 'wan26', name: 'WAN 2.6', description: 'High quality artistic videos', credits: 20 },
-  { id: 'seedance', name: 'Seedance', description: 'Motion-focused generation', credits: 20 },
-];
-
-const aspectRatios = [
-  { id: '16:9', name: '16:9 Landscape', description: 'YouTube, TV' },
-  { id: '9:16', name: '9:16 Portrait', description: 'TikTok, Reels' },
-  { id: '1:1', name: '1:1 Square', description: 'Instagram' },
-  { id: '4:3', name: '4:3 Standard', description: 'Classic format' },
-];
-
 export default function TextToVideoPage() {
   const { user } = useAuthStore();
-  const { credits, checkGenerationLimit } = useUserStore();
+  const { credits, refreshCredits } = useUserStore();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(models[0]);
+
+  // Model state
+  const [selectedModel, setSelectedModel] = useState<ModelConfig>(VIDEO_MODELS[0]);
+  const [selectedDuration, setSelectedDuration] = useState<number>(VIDEO_MODELS[0].durations[0]);
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<string>(
+    getDefaultAspectRatio(VIDEO_MODELS[0])
+  );
+  const [selectedResolution, setSelectedResolution] = useState<string>(getDefaultResolution());
+  const [selectedMode, setSelectedMode] = useState<string>(getDefaultMode());
+  const [isMultiShot, setIsMultiShot] = useState(false);
+  const [showMultiShotDialog, setShowMultiShotDialog] = useState(false);
 
   const {
     register,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors },
+    getValues,
   } = useForm<TextToVideoFormData>({
     resolver: zodResolver(textToVideoSchema),
     defaultValues: {
-      model: 'sora-2',
-      aspectRatio: '16:9',
-      duration: 5,
+      prompt: '',
     },
   });
 
-  const duration = watch('duration');
-  const aspectRatio = watch('aspectRatio');
+  // Reset options when model changes
+  useEffect(() => {
+    setSelectedDuration(getDefaultDuration(selectedModel));
+    setSelectedAspectRatio(getDefaultAspectRatio(selectedModel));
+    if (selectedModel.id === 'seedance') {
+      setSelectedResolution(getDefaultResolution());
+    }
+    if (selectedModel.id === 'grok') {
+      setSelectedMode(getDefaultMode());
+    }
+  }, [selectedModel]);
+
+  // Calculate current cost
+  const calculateCost = (): number => {
+    if (isMultiShot) {
+      return MULTISHOT_CONFIG.totalCost;
+    }
+    return selectedModel.getCost(selectedDuration, selectedResolution);
+  };
+
+  const currentCost = calculateCost();
+
+  // Handle Multi-Shot selection
+  const handleMultiShotClick = () => {
+    if (isMultiShot) {
+      // Deselect multi-shot, go back to first model
+      setIsMultiShot(false);
+      setSelectedModel(VIDEO_MODELS[0]);
+    } else {
+      // Show confirmation dialog
+      setShowMultiShotDialog(true);
+    }
+  };
+
+  const confirmMultiShot = () => {
+    setIsMultiShot(true);
+    setShowMultiShotDialog(false);
+  };
 
   const onSubmit = async (data: TextToVideoFormData) => {
     if (!user?.uid) {
@@ -73,30 +116,84 @@ export default function TextToVideoPage() {
       return;
     }
 
-    // Check generation limits
-    const canGenerate = await checkGenerationLimit(user.uid);
-    if (!canGenerate) {
-      toast.error('Daily generation limit reached. Upgrade to Pro for more generations.');
-      return;
-    }
-
     // Check credits
-    if (credits < selectedModel.credits) {
-      toast.error(`Not enough credits. You need ${selectedModel.credits} credits for ${selectedModel.name}.`);
+    if ((credits ?? 0) < currentCost) {
+      toast.error(`Not enough credits. You need ${currentCost} credits.`);
       return;
     }
 
     setIsGenerating(true);
 
     try {
-      // TODO: Call Firebase Function to generate video
-      toast.success('Video generation started! Check My Videos for progress.');
+      if (isMultiShot) {
+        // Generate with all 5 models
+        const multiShotPromises = [
+          generateVideo({
+            type: 'text-to-video',
+            prompt: data.prompt,
+            model: 'sora2',
+            duration: 10,
+            aspectRatio: '9:16',
+          }),
+          generateVideo({
+            type: 'text-to-video',
+            prompt: data.prompt,
+            model: 'veo3',
+            duration: 8,
+            aspectRatio: '9:16',
+          }),
+          generateVideo({
+            type: 'text-to-video',
+            prompt: data.prompt,
+            model: 'grok',
+            duration: 6,
+            aspectRatio: '2:3',
+            mode: 'normal',
+          }),
+          generateVideo({
+            type: 'text-to-video',
+            prompt: data.prompt,
+            model: 'wan26',
+            duration: 5,
+            aspectRatio: '9:16',
+          }),
+          generateVideo({
+            type: 'text-to-video',
+            prompt: data.prompt,
+            model: 'seedance',
+            duration: 5,
+            aspectRatio: '9:16',
+            resolution: '480p',
+          }),
+        ];
 
-      // Simulate API call for now
-      console.log('Generating video with:', data);
+        await Promise.all(multiShotPromises);
+        toast.success('Multi-Shot started! 5 videos are being generated. Check My Files for progress.');
+      } else {
+        // Single model generation
+        const result = await generateVideo({
+          type: 'text-to-video',
+          prompt: data.prompt,
+          model: selectedModel.id as AIModel,
+          duration: selectedDuration,
+          aspectRatio: selectedAspectRatio,
+          resolution: selectedModel.id === 'seedance' ? (selectedResolution as '480p' | '720p' | '1080p') : undefined,
+          mode: selectedModel.id === 'grok' ? (selectedMode as 'normal' | 'fun') : undefined,
+        });
 
-    } catch (error) {
-      toast.error('Failed to start video generation. Please try again.');
+        if (result.success) {
+          toast.success('Video generation started! Check My Files for progress.');
+        }
+      }
+
+      // Refresh credits after successful generation
+      if (user.uid) {
+        refreshCredits(user.uid);
+      }
+    } catch (error: unknown) {
+      console.error('Generation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start video generation';
+      toast.error(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -113,7 +210,8 @@ export default function TextToVideoPage() {
           </Badge>
         </div>
         <p className="text-muted-foreground">
-          Transform your ideas into stunning videos with AI. Describe what you want to see and let AI do the magic.
+          Transform your ideas into stunning videos with AI. Describe what you want to see and let AI
+          do the magic.
         </p>
       </div>
 
@@ -132,8 +230,8 @@ export default function TextToVideoPage() {
                   <Label htmlFor="prompt">Prompt *</Label>
                   <Textarea
                     id="prompt"
-                    placeholder="A majestic eagle soaring through golden clouds at sunset, cinematic lighting, 4K quality..."
-                    className="min-h-[120px] resize-none"
+                    placeholder="Describe your scene in detail: characters, setting, actions, mood, lighting..."
+                    className="min-h-[150px] resize-none"
                     {...register('prompt')}
                     disabled={isGenerating}
                   />
@@ -145,109 +243,188 @@ export default function TextToVideoPage() {
                   </p>
                 </div>
 
-                {/* Negative Prompt */}
-                <div className="space-y-2">
-                  <Label htmlFor="negativePrompt">Negative Prompt (Optional)</Label>
-                  <Input
-                    id="negativePrompt"
-                    placeholder="blurry, low quality, distorted, watermark..."
-                    {...register('negativePrompt')}
-                    disabled={isGenerating}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Describe what you don't want in the video
-                  </p>
-                </div>
-
                 {/* Model Selection */}
                 <div className="space-y-2">
                   <Label>AI Model</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {models.map((model) => (
+                    {VIDEO_MODELS.map((model) => (
                       <div
                         key={model.id}
                         onClick={() => {
-                          setSelectedModel(model);
-                          setValue('model', model.id);
+                          if (!isGenerating) {
+                            setIsMultiShot(false);
+                            setSelectedModel(model);
+                          }
                         }}
                         className={`relative cursor-pointer rounded-lg border p-4 transition-all hover:border-primary/50 ${
-                          selectedModel.id === model.id
+                          !isMultiShot && selectedModel.id === model.id
                             ? 'border-primary bg-primary/5'
                             : 'border-border'
-                        }`}
+                        } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{model.name}</span>
                               {model.badge && (
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge
+                                  variant="secondary"
+                                  className={`text-xs ${
+                                    model.badge === 'New'
+                                      ? 'bg-green-500/10 text-green-500'
+                                      : 'bg-primary/10 text-primary'
+                                  }`}
+                                >
                                   {model.badge}
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {model.description}
-                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">{model.description}</p>
                           </div>
-                          <Badge variant="outline" className="shrink-0">
-                            {model.credits} credits
-                          </Badge>
                         </div>
                       </div>
                     ))}
-                  </div>
-                </div>
 
-                {/* Aspect Ratio */}
-                <div className="space-y-2">
-                  <Label>Aspect Ratio</Label>
-                  <Select
-                    defaultValue="16:9"
-                    onValueChange={(value) => setValue('aspectRatio', value)}
-                    disabled={isGenerating}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select aspect ratio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {aspectRatios.map((ratio) => (
-                        <SelectItem key={ratio.id} value={ratio.id}>
+                    {/* Multi-Shot Option */}
+                    <div
+                      onClick={() => !isGenerating && handleMultiShotClick()}
+                      className={`relative cursor-pointer rounded-lg border p-4 transition-all hover:border-primary/50 ${
+                        isMultiShot ? 'border-primary bg-primary/5' : 'border-border'
+                      } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
                           <div className="flex items-center gap-2">
-                            <span>{ratio.name}</span>
-                            <span className="text-xs text-muted-foreground">({ratio.description})</span>
+                            <Layers className="w-4 h-4" />
+                            <span className="font-medium">{MULTISHOT_CONFIG.name}</span>
+                            <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-500">
+                              5 in 1
+                            </Badge>
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {MULTISHOT_CONFIG.description}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="shrink-0">
+                          {MULTISHOT_CONFIG.totalCost} credits
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Duration */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                {/* Duration Selection (if model has multiple durations) */}
+                {!isMultiShot && selectedModel.durations.length > 1 && (
+                  <div className="space-y-2">
                     <Label>Duration</Label>
-                    <span className="text-sm font-medium">{duration} seconds</span>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModel.durations.map((duration) => (
+                        <Button
+                          key={duration}
+                          type="button"
+                          variant={selectedDuration === duration ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedDuration(duration)}
+                          disabled={isGenerating}
+                        >
+                          {duration}s
+                          <span className="ml-1 text-xs opacity-70">
+                            ({selectedModel.getCost(duration, selectedResolution)} credits)
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <Slider
-                    defaultValue={[5]}
-                    min={3}
-                    max={15}
-                    step={1}
-                    onValueChange={(value) => setValue('duration', value[0])}
-                    disabled={isGenerating}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Longer videos use more credits
-                  </p>
-                </div>
+                )}
+
+                {/* Fixed Duration Display (if model has single duration) */}
+                {!isMultiShot && selectedModel.durations.length === 1 && (
+                  <div className="space-y-2">
+                    <Label>Duration</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Fixed at {selectedModel.durations[0]} seconds for {selectedModel.name}
+                    </p>
+                  </div>
+                )}
+
+                {/* Aspect Ratio Selection */}
+                {!isMultiShot && selectedModel.aspectRatios && selectedModel.aspectRatios.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Aspect Ratio</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModel.aspectRatios.map((ratio) => (
+                        <Button
+                          key={ratio}
+                          type="button"
+                          variant={selectedAspectRatio === ratio ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedAspectRatio(ratio)}
+                          disabled={isGenerating}
+                        >
+                          {ratio}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resolution Selection (Seedance only) */}
+                {!isMultiShot && selectedModel.id === 'seedance' && selectedModel.resolutions && (
+                  <div className="space-y-2">
+                    <Label>Resolution</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModel.resolutions.map((resolution) => (
+                        <Button
+                          key={resolution}
+                          type="button"
+                          variant={selectedResolution === resolution ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedResolution(resolution)}
+                          disabled={isGenerating}
+                        >
+                          {resolution}
+                          <span className="ml-1 text-xs opacity-70">
+                            ({selectedModel.getCost(selectedDuration, resolution)} credits)
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mode Selection (Grok only) */}
+                {!isMultiShot && selectedModel.id === 'grok' && selectedModel.modes && (
+                  <div className="space-y-2">
+                    <Label>Mode</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedModel.modes.map((mode) => (
+                        <Button
+                          key={mode}
+                          type="button"
+                          variant={selectedMode === mode ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedMode(mode)}
+                          disabled={isGenerating}
+                          className="capitalize"
+                        >
+                          {mode}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedMode === 'fun'
+                        ? 'Fun mode creates more creative and playful videos'
+                        : 'Normal mode creates realistic and natural videos'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Submit Button */}
                 <Button
                   type="submit"
                   size="lg"
                   className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90"
-                  disabled={isGenerating || credits < selectedModel.credits}
+                  disabled={isGenerating || (credits ?? 0) < currentCost}
                 >
                   {isGenerating ? (
                     <>
@@ -257,7 +434,7 @@ export default function TextToVideoPage() {
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-5 w-5" />
-                      Generate Video ({selectedModel.credits} credits)
+                      Generate {isMultiShot ? 'Multi-Shot' : 'Video'} ({currentCost} credits)
                     </>
                   )}
                 </Button>
@@ -277,12 +454,25 @@ export default function TextToVideoPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary">{credits}</div>
+              <div className="text-3xl font-bold text-primary">{credits ?? 0}</div>
               <p className="text-sm text-muted-foreground mt-1">
-                {credits >= selectedModel.credits
-                  ? `Enough for ${Math.floor(credits / selectedModel.credits)} generations`
+                {(credits ?? 0) >= currentCost
+                  ? `Enough for ${Math.floor((credits ?? 0) / currentCost)} generation${
+                      Math.floor((credits ?? 0) / currentCost) !== 1 ? 's' : ''
+                    }`
                   : 'Not enough credits'}
               </p>
+              <div className="mt-3 p-2 bg-muted rounded-md">
+                <p className="text-sm font-medium">
+                  Current selection: {currentCost} credits
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {isMultiShot
+                    ? 'Multi-Shot (5 models)'
+                    : `${selectedModel.name} - ${selectedDuration}s`}
+                  {selectedModel.id === 'seedance' && !isMultiShot && ` @ ${selectedResolution}`}
+                </p>
+              </div>
               <Button variant="outline" className="w-full mt-4" size="sm">
                 Buy More Credits
               </Button>
@@ -301,9 +491,16 @@ export default function TextToVideoPage() {
               <p>Typical generation time:</p>
               <ul className="mt-2 space-y-1">
                 <li>• Sora 2: 60-90 seconds</li>
-                <li>• Veo 3: 45-60 seconds</li>
-                <li>• Other models: 30-60 seconds</li>
+                <li>• Veo 3.1: 45-60 seconds</li>
+                <li>• Grok: 30-45 seconds</li>
+                <li>• Wan 2.6: 60-120 seconds</li>
+                <li>• Seedance: 30-60 seconds</li>
               </ul>
+              {selectedModel.id === 'sora2' && selectedDuration === 15 && (
+                <p className="mt-2 text-xs text-yellow-500">
+                  Note: 15s Sora 2 videos can take up to 10 minutes
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -316,14 +513,53 @@ export default function TextToVideoPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-2">
-              <p>• Include camera movements like "slow zoom", "pan left"</p>
-              <p>• Specify lighting: "golden hour", "dramatic shadows"</p>
-              <p>• Add style keywords: "cinematic", "anime", "photorealistic"</p>
-              <p>• Describe the mood: "peaceful", "intense", "mysterious"</p>
+              <p>• Include camera movements like &quot;slow zoom&quot;, &quot;pan left&quot;</p>
+              <p>• Specify lighting: &quot;golden hour&quot;, &quot;dramatic shadows&quot;</p>
+              <p>• Add style keywords: &quot;cinematic&quot;, &quot;anime&quot;, &quot;photorealistic&quot;</p>
+              <p>• Describe the mood: &quot;peaceful&quot;, &quot;intense&quot;, &quot;mysterious&quot;</p>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Multi-Shot Confirmation Dialog */}
+      <Dialog open={showMultiShotDialog} onOpenChange={setShowMultiShotDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enable Multi-Shot Mode?</DialogTitle>
+            <DialogDescription>
+              This will generate your video with all 5 AI models at once.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-4">
+            <p className="text-sm font-medium">Cost breakdown:</p>
+            <div className="space-y-2">
+              {MULTISHOT_CONFIG.breakdown.map((item) => (
+                <div key={item.model} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{item.model}</span>
+                  <span>{item.cost} credits</span>
+                </div>
+              ))}
+              <div className="border-t pt-2 flex justify-between font-medium">
+                <span>Total</span>
+                <span className="text-primary">{MULTISHOT_CONFIG.totalCost} credits</span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMultiShotDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmMultiShot} disabled={(credits ?? 0) < MULTISHOT_CONFIG.totalCost}>
+              {(credits ?? 0) >= MULTISHOT_CONFIG.totalCost
+                ? 'Enable Multi-Shot'
+                : `Need ${MULTISHOT_CONFIG.totalCost - (credits ?? 0)} more credits`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -82,7 +82,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
-  const { credits, unreadCount } = useUserStore();
+  const { credits, unreadCount, videoJobs } = useUserStore();
+
+  // Count processing videos (pending, processing, post-processing)
+  const processingCount = videoJobs.filter(
+    (job) => job.status === 'pending' || job.status === 'processing' || job.status === 'post-processing'
+  ).length;
 
   // Navigation function using window.location for static export compatibility
   const handleNavClick = (href: string, label: string) => {
@@ -106,11 +111,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <button
               onClick={() => handleNavClick(item.href, item.name)}
               className={cn(
-                'w-full flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-all hover:bg-accent cursor-pointer',
+                'w-full flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-all hover:bg-accent cursor-pointer relative',
                 isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'
               )}
             >
               <Icon className={cn('h-4 w-4 flex-shrink-0', isActive && 'text-primary')} />
+              {/* Processing count badge for collapsed state */}
+              {item.name === 'My Files' && processingCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[9px] font-medium text-white">
+                  {processingCount > 9 ? '9+' : processingCount}
+                </span>
+              )}
+              {/* Notification badge for collapsed state */}
+              {item.name === 'Notifications' && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" className="flex items-center gap-2">
@@ -118,6 +135,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             {showBadge && 'badge' in item && item.badge && (
               <Badge variant="secondary" className="text-[10px]">
                 {item.badge}
+              </Badge>
+            )}
+            {item.name === 'My Files' && processingCount > 0 && (
+              <Badge className="text-[10px] bg-blue-500 text-white">
+                {processingCount} processing
               </Badge>
             )}
           </TooltipContent>
@@ -152,6 +174,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {item.name === 'Notifications' && unreadCount > 0 && (
           <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
             {unreadCount > 99 ? '99+' : unreadCount}
+          </Badge>
+        )}
+        {item.name === 'My Files' && processingCount > 0 && (
+          <Badge className="text-[10px] px-1.5 py-0 bg-blue-500 text-white">
+            {processingCount}
           </Badge>
         )}
       </button>

@@ -56,9 +56,10 @@ export default function PromptDatabasePage() {
     if (category === 'saved' && user) {
       fetchSavedPrompts(user.uid);
     } else {
-      fetchPrompts(user?.uid);
+      // Pass current searchQuery from store to preserve search when switching content type/category
+      fetchPrompts(user?.uid, searchQuery);
     }
-  }, [category, contentType, user, fetchPrompts, fetchSavedPrompts]);
+  }, [category, contentType, user, fetchPrompts, fetchSavedPrompts, searchQuery]);
 
   // Debounced search
   useEffect(() => {
@@ -66,7 +67,8 @@ export default function PromptDatabasePage() {
       if (searchInput !== searchQuery) {
         setSearchQuery(searchInput);
         if (category !== 'saved') {
-          fetchPrompts(user?.uid);
+          // Pass searchInput directly to avoid race condition with state update
+          fetchPrompts(user?.uid, searchInput);
         }
       }
     }, 300);
