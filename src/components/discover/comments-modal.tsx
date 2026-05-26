@@ -108,8 +108,8 @@ export function CommentsModal({ video, isOpen, onClose }: CommentsModalProps) {
     }
   };
 
-  const getInitials = (name: string) => {
-    return name
+  const getInitials = (name: string | null | undefined) => {
+    return (name || '?')
       .split(' ')
       .map((n) => n[0])
       .join('')
